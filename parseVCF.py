@@ -17,7 +17,7 @@ def loadVCF(filepath):
 
 def parseVCFtoDataFrame(filepath,
                         keys = ['CHROM', 'POS', 'REF' ,'ALT'],
-                        info_keys = ['TYPE', 'DP']):
+                        info_keys = ['TYPE', 'DP', 'RO', 'AO']):
     """ Grab selected information from VCF to put into a more easily
         manipulated pandas dataframe
 
@@ -25,7 +25,8 @@ def parseVCFtoDataFrame(filepath,
     filepath (str or os.path object): location of VCF file
     keys (list): names of columns (str) from VCF file, defaults to ['CHROM', 'POS', 'REF' ,'ALT']
             (Options are CHROM, POS, ID, REF, ALT, QUAL, FILTER)
-    info_keys (list): names of site-level annotations - for this project TYPE and DP are defaults.
+    info_keys (list): names of site-level annotations - for this project TYPE (Type of Variation)
+     DP (read depth), RO (reference observations), AO (alternate observations)  are defaults.
 
     Returns:
     Dataframe: pandas dataframe with specified columns and site level annotations
@@ -63,8 +64,10 @@ def prioritizeLabel(VCFDataFrame,
     """
     selected_type = []
     selected_alt = []
+    selected_count = []
 
-    for altType, alt in zip(VCFDataFrame['TYPE'], VCFDataFrame['ALT']):
+    for altType, alt, altCount in zip(VCFDataFrame['TYPE'], VCFDataFrame['ALT'],
+                                      VCFDataFrame['AO']):
         altType = altType.split(',')
         assert (len(altType)==len(alt))
 
@@ -72,6 +75,7 @@ def prioritizeLabel(VCFDataFrame,
         if len(altType) == 1:
             selected_type.append(altType[0])
             selected_alt.append(alt[0])
+            selected_count.append(altCount)
             continue
 
         #pick one possible variant if multiple
@@ -80,6 +84,7 @@ def prioritizeLabel(VCFDataFrame,
                 idx = altType.index(type)
                 selected_alt.append(alt[idx])
                 selected_type.append(altType[idx])
+                selected_count.append(altCount[idx])
                 break
         else: raise Exception('/'.join(altType) + ' were not found in priority.')
 
@@ -87,8 +92,29 @@ def prioritizeLabel(VCFDataFrame,
     if inplace:
         VCFDataFrame['VAR_TYPE']=selected_type
         VCFDataFrame['VAR']=selected_alt
+        VCFDataFrame['VAR_COUNT']=selected_count
     else:
         copy = VCFDataFrame.copy()
         copy['VAR_TYPE']=selected_type
         copy['VAR']=selected_alt
+        copy['VAR_COUNT']=selected_count
         return copy
+
+def calculateVarFrac(VCFDataFrame, inplace = True):
+        """ Calculates fraction of reads that were Variants versus Reference
+
+        Parameters:
+        VCFDataFrame (pd.DataFrame): table containing parsed VCF data (needs to have 'DP' and 'VAR_COUNT')
+        inplace (bool): option to update VCFDataframe
+
+        Returns:
+        DataFrame: updated dataframe based on prioritized variant types
+
+        """
+
+        if inplace:
+            VCFDataFrame['VAR_FRAC'] = VCFDataFrame.apply(lambda row: row['VAR_COUNT']/row['DP'], axis=1)
+        else:
+            copy = VCFDataFrame.copy()
+            copy['VAR_FRAC'] = VCFDataFrame['VAR_COUNT']/VCFDataFrame['DP']
+            return copy
