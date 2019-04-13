@@ -1,4 +1,5 @@
 cyvcf2
 pandas
+numpy
 jupyter
 requests
